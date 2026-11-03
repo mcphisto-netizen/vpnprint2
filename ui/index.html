@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VPNPrint</title>
+<style>
+  :root { color-scheme: light; }
+  body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; background:#f2f5f9; color:#1c2430; }
+  header { background:#2f5fa8; color:#fff; padding:14px 22px; display:flex; align-items:center; gap:14px; }
+  header h1 { font-size: 20px; margin:0; }
+  pil { font-size:12px; opacity:.85 }
+  main { max-width: 860px; margin: 18px auto 60px; padding: 0 16px; }
+  .tarjeta { background:#fff; border:1px solid #d7dee9; border-radius:12px; padding:18px 20px; margin:14px 0; box-shadow:0 1px 3px rgba(20,40,80,.06); }
+  .tarjeta h2 { margin:0 0 8px; font-size:17px; }
+  .estado { display:flex; align-items:center; gap:12px; }
+  .punto { width:16px; height:16px; border-radius:50%; background:#b6bcc6; display:inline-block; }
+  .punto.ok { background:#2fae63; } .punto.alerta { background:#e8a13c; } .punto.fail { background:#d94343; }
+  button { font-size:15px; padding:10px 18px; border-radius:9px; border:1px solid #95a5c0; background:#eef3fa; cursor:pointer; }
+  button.primario { background:#2f5fa8; color:#fff; border-color:#2f5fa8; }
+  button.rojo { background:#fff2f2; color:#a02c2c; border-color:#d9a0a0; }
+  button:disabled { opacity:.5; cursor:default; }
+  textarea { width:100%; box-sizing:border-box; font-size:14px; border:1px solid #bac6da; border-radius:8px; padding:10px; font-family:Consolas,monospace; }
+  select, input[type=text] { font-size:14px; padding:8px; border:1px solid #bac6da; border-radius:8px; width:100%; box-sizing:border-box; }
+  .fila { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .chico { font-size:12.5px; color:#5b6675; margin-top:6px; }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; }
+  th,td { text-align:left; padding:7px 8px; border-bottom:1px solid #e3e8f0; vertical-align:top; }
+  .tag { border-radius:14px; padding:2px 10px; font-size:12px; white-space:nowrap; }
+  .tag.cola { background:#fdeccd; color:#8a6116; } .tag.hecho { background:#d9f3e3; color:#1c7c46; } .tag.err { background:#fbdcdc; color:#96261f; }
+  #log { font-family:Consolas,monospace; font-size:12px; white-space:pre-wrap; background:#0f1622; color:#cde3ff; padding:12px; border-radius:8px; max-height:260px; overflow:auto; }
+  .oculto { display:none; }
+  .paso { font-size:15px; color:#26456e; background:#eaf1fb; border:1px solid #c9d9f2; border-radius:10px; padding:10px 14px; margin-top:8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>VPNPrint</h1>
+  <span style="opacity:.8" id="subtitulo"></span>
+</header>
+<main>
+
+  <div class="tarjeta oculto" id="tarjetaElegir">
+    <h2>&iquest;Qu&eacute; es esta computadora?</h2>
+    <div class="fila">
+      <button class="primario" onclick="elegir('cliente')">Est&aacute; lejos de la impresora (cliente): imprimo aqu&iacute;</button>
+      <button class="primario" onclick="elegir('servidor')">Tiene la impresora conectada (servidor)</button>
+    </div>
+    <div class="chico">Si este ejecutable no dice &quot;Servidor&quot; o &quot;Cliente&quot; en el nombre, eleg&iacute; ac&aacute;. Para cambiarlo despu&eacute;s: borr&aacute; VPNPrintDatos/config.json y volv&eacute; a abrir.</div>
+  </div>
+
+  <div class="tarjeta">
+    <h2>Estado</h2>
+    <div class="estado"><span class="punto" id="punto"></span><b id="estadoTexto">cargando...</b></div>
+    <div class="paso"></div><div id="pasoTexto"></div>
+  </div>
+
+  <div class="tarjeta oculto" id="tarjetaCodigoServidor">
+    <h2>2. C&oacute;digo de conexi&oacute;n</h2>
+    <div class="fila">
+      <button onclick="recargarCodigo()">Actualizar c&oacute;digo</button>
+      <button onclick="copiarCodigo()">Copiar c&oacute;digo</button>
+      <button class="rojo" onclick="copiarRegistro()">Copiar registro completo</button>
+    </div>
+    <textarea id="codigoServidor" rows="3" readonly title="Mándalo por WhatsApp/mail a quien quiera imprimir ahí"></textarea>
+    <div class="chico">El c&oacute;digo contiene la IP/puerto y una llave. Nada de carpetas compartidas: solo pega el c&oacute;digo en la otra PC.
+      IP local detectada: <span id="ipLocal"></span>. Si esta PC cambia de IP, edita "Dominio o IP fija" abajo.</div>
+  </div>
+
+  <div class="tarjeta oculto" id="tarjetaConfigServidor">
+    <h2>Configuraci&oacute;n del servidor</h2>
+    <label>Impresora donde salen las hojas<br><select id="impresoraDestino" onchange="configSucio=true;avisoDestino()"></select></label>
+    <div class="chico" id="avisoDestino" style="color:#a02c2c"></div>
+    <div class="fila" style="margin-top:8px">
+      <label style="min-width:280px">&iquest;No aparece? Escrib&iacute; el nombre exacto<br>
+      <input type="text" id="impresoraManual" placeholder="ej: HP LaserJet 1020" oninput="configSucio=true;avisoDestino()"></label>
+    </div>
+    <div class="chico"></div>
+    <div class="fila" style="margin-top:8px">
+      <label style="min-width:280px">Dominio o IP fija (opcional; usa el c&oacute;digo si cambia la IP)<br>
+      <input type="text" id="ipFija" placeholder="ej: 192.168.4.7 o mipc.midominio.com"></label>
+      <label style="min-width:120px">Puerto de datos<br><input type="text" id="puertoD"></label>
+      <button class="primario" style="align-self:flex-end" onclick="guardarConfig()">Guardar</button>
+    </div>
+    <div class="chico" id="configAviso"></div>
+    <div class="fila" style="margin-top:10px">
+      <button onclick="dispararProbar()">Probar impresi&oacute;n</button>
+      <button onclick="abrirFirewall()">Abrir puerto en el firewall (recomendado)</button>
+    </div>
+    <div class="chico">Si la otra PC &laquo;no hay conexi&oacute;n&raquo;, casi siempre es este firewall: puls&aacute; el bot&oacute;n y acept&aacute; el permiso.</div>
+  </div>
+
+  <div class="tarjeta oculto" id="tarjetaCodigoCliente">
+    <h2>1. Conectar a la impresora remota</h2>
+    <textarea id="pegarCodigo" rows="3" placeholder="Peg&aacute; ac&aacute; el c&oacute;digo que te mandaron (VPP1-...)"></textarea>
+    <div class="fila" style="margin-top:8px">
+      <button class="primario" onclick="pegar()">Conectar</button>
+      <span id="estadoConexion" class="chico"></span>
+    </div>
+    <div class="chico">El "servidor" es la PC donde est&aacute; la impresora f&iacute;sica.</div>
+  </div>
+
+  <div class="tarjeta oculto" id="tarjetaInstalar">
+    <h2>2. Impresora virtual en esta PC</h2>
+    <div class="estado"><span class="punto" id="puntoImpr"></span><b id="estadoImpresora"></b></div>
+    <div class="fila" style="margin-top:10px">
+      <button class="primario" onclick="instalar()">Instalar / reparar impresora &laquo;Impresora VPN&raquo;</button>
+      <button class="rojo" onclick="quitarImpresora()">Quitar Impresora VPN</button>
+      <button onclick="dispararProbar()">Hoja de prueba</button>
+    </div>
+    <div class="chico" id="detalleImpresora"></div>
+    <div class="chico">Driver elegido autom&aacute;ticamente: <b id="driverNombre"></b>. Imprime desde <i>cualquier</i> programa en &laquo;Impresora VPN&raquo;.</div>
+  </div>
+
+  <div class="tarjeta">
+    <h2>Cola de impresi&oacute;n (sobrevive cortes de red)</h2>
+    <div class="fila">
+      <button onclick="accionCola('reintentar','')">Reintentar todo ahora</button>
+      <button class="rojo" onclick="accionCola('borrar','')">Vaciar cola</button>
+      <span id="resumenCola" class="chico"></span>
+    </div>
+    <table><thead><tr><th>Trabajo</th><th>Tama&ntilde;o</th><th>Estado</th><th>Detalle</th><th></th></tr></thead>
+    <tbody id="cuerpoCola"><tr><td colspan="5" class="chico">vac&iacute;a</td></tr></tbody></table>
+  </div>
+
+  <div class="tarjeta">
+    <h2>Registro</h2>
+    <div id="log"></div>
+    <div class="fila" style="margin-top:8px">
+      <button onclick="recargarRegistro()">Refrescar registro</button>
+      <button onclick="copiarRegistro()">Copiar registro</button>
+      <button class="rojo" onclick="borradoRegistro()">Mandar por mail / pedir ayuda</button>
+    </div>
+    <div class="chico">El registro queda guardado en <b>VPNPrintDatos/registro.txt</b> al lado del programa. Si algo falla, copi&aacute;lo e mandalo.</div>
+    <label class="chico" style="display:block;margin-top:8px"><input type="checkbox" id="chkArranque" onchange="toggleArranque()"> Arrancar solo cuando prenda la PC</label>
+  </div>
+
+</main>
+<script>
+function $(id){ return document.getElementById(id); }
+function xhr(metodo, url, cb, cuerpo){
+  var x = new XMLHttpRequest();
+  x.open(metodo, url, true);
+  if (cuerpo){ x.setRequestHeader('Content-Type','application/json'); x.send(cuerpo); } else { x.send(); }
+  x.onreadystatechange = function(){
+    if (x.readyState == 4){ var j=null; try{ j=JSON.parse(x.responseText); }catch(e){}
+      cb(j, x.status); }
+  };
+}
+function post(url, cuerpo, cb){ xhr('POST', url, cb, JSON.stringify(cuerpo||{})); }
+function get(url, cb){ xhr('GET', url, cb); }
+
+var EST = null;
+var configSucio = false; // el usuario tocó impresora/IP/puerto: no pisar hasta Guardar
+var VIRTUALES = ['print to pdf','pdf24','xps','onenote','fax','cute pdf','cutepdf','dopdf','pdfcreator','adobe pdf','nitro pdf','bullzip','primopdf','microsoft print'];
+function esVirtual(n){
+  n=(n||'').toLowerCase();
+  for (var i=0;i<VIRTUALES.length;i++){ if (n.indexOf(VIRTUALES[i])>=0) return true; }
+  return false;
+}
+function avisoDestino(){
+  var d=($('impresoraManual').value||'').replace(/^\s+|\s+$/g,'') || $('impresoraDestino').value || '';
+  var a=$('avisoDestino');
+  if (!a) return;
+  a.textContent = esVirtual(d) ? ('Ojo: «'+d+'» es virtual (PDF/XPS): no sale papel. Elegí la impresora física.') : '';
+}
+function refrescar(){
+  get('/api/estado', function(e){
+    if (!e) return;
+    EST = e;
+    $('subtitulo').textContent = e.version + ' — ' + (e.modo||'sin modo elegido');
+    // elegir modo
+    if (!e.modo){ $('tarjetaElegir').classList.remove('oculto'); }
+    else {
+      $('tarjetaElegir').classList.add('oculto');
+      var esServidor = e.modo=='servidor';
+      $('subtitulo').textContent += esServidor? ' (servidor)' : ' (cliente)';
+      $('tarjetaCodigoServidor').classList.toggle('oculto', !esServidor);
+      $('tarjetaConfigServidor').classList.toggle('oculto', !esServidor);
+      $('tarjetaCodigoCliente').classList.toggle('oculto', esServidor);
+      $('tarjetaInstalar').classList.toggle('oculto', esServidor);
+    }
+    // estado general
+    var p = $('punto'), t = $('estadoTexto'), paso = $('pasoTexto');
+    paso.innerHTML='';
+    if (!e.modo || (e.modo=='cliente' && !e.servidor)){
+      p.className='punto alerta'; t.textContent='Falta conectar: sigue los pasos de abajo.';
+    } else if (e.modo=='servidor'){
+      p.className='punto ok'; t.textContent='Listo para recibir trabajos.';
+      paso.textContent = 'Los trabajos entran en el puerto ' + (e.puertoD||8443) + '. Salen por: ' + (e.impresora||'ninguna impresora elegida todavía') + '.';
+    } else {
+      p.className='punto ok'; t.textContent='Conectado al servidor.';
+    }
+    // servidor
+    if (e.modo=='servidor'){
+      if (e.codigo) $('codigoServidor').value = e.codigo;
+      $('ipLocal').textContent = (e.ips && e.ips[0]) || 'no detectada';
+      llenarImpresoras(e);
+      var sel=$('impresoraDestino'); var actual=e.impresora||'';
+      if (!configSucio){
+        var esta=false;
+        for (var k=0;k<sel.options.length;k++){ if (sel.options[k].value==actual) esta=true; }
+        if (esta){ sel.value=actual; $('impresoraManual').value=''; }
+        else if (actual) { $('impresoraManual').value=actual; }
+        $('ipFija').value = e.ipFija || '';
+        $('puertoD').value = e.puertoD || '';
+      }
+      avisoDestino();
+      $('driverNombre').textContent='—';
+    }
+    if (e.modo=='cliente'){
+      $('estadoConexion').textContent = e.servidor? ('Servidor: '+e.servidor) : '';
+      $('driverNombre').textContent = e.driverSel || '—';
+    }
+    $('chkArranque').checked = !!e.arranque;
+    // cola
+    var c = e.cola || [];
+    if (c.length){
+      var h='';
+      for (var i=0;i<c.length;i++){
+        var j=c[i];
+        h+='<tr><td>'+esc(j.nombre)+'</td><td>'+fmt(j.tamano)+'</td><td><span class="tag '+cls(j.estado)+'">'+tag(j.estado)+'</span></td>'+
+           '<td class="chico">'+esc(j.error||j.detalle||'')+'</td>'+
+           '<td><button onclick="accionCola(\'reintentar\',\''+j.id+'\')">&#8635;</button> <button class="rojo" onclick="accionCola(\'borrar\',\''+j.id+'\')">x</button></td></tr>';
+      }
+      $('cuerpoCola').innerHTML = h;
+    } else {
+      $('cuerpoCola').innerHTML = '<tr><td colspan="5" class="chico">vacía</td></tr>';
+    }
+    $('resumenCola').textContent = c.length? (c.length+' en cola') : '';
+    // impresora local (estado del instalador)
+    if (e.modo=='cliente'){
+      var inst = e.impresoraVpn;
+      var pt=$('puntoImpr'), ti=$('estadoImpresora'), dt=$('detalleImpresora');
+      var tp = e.tipoVpn || '';
+      if (inst && inst.presente){
+        if (tp=='pdf'){
+          pt.className='punto alerta';
+          ti.textContent='"Impresora VPN" instalada, pero el driver es de PDF: el servidor no puede imprimirlo.';
+          dt.textContent='Pulsá "Instalar impresora" otra vez para cambiarla al driver XPS.';
+        } else {
+          pt.className='punto ok';
+          ti.textContent='"Impresora VPN" lista'+(tp=='xps'?' (XPS)':(tp=='texto'?' (solo texto)':''));
+          dt.textContent = e.driverVpn ? ('Driver: '+e.driverVpn) : '';
+        }
+      }
+      else { pt.className='punto alerta'; ti.textContent='Aún no está instalada.'; dt.textContent='Pulsá el botón de instalar (pedirá permiso de administrador una vez).'; }
+    }
+    // registro
+    if (e.registro) $('log').textContent = e.registro[e.registro.length-1] || '';
+    $('log').scrollTop = $('log').scrollHeight;
+  });
+}
+function esc(s){ return (s+'').replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>'); }
+function fmt(n){ return n> 1048576 ? (n/1048576).toFixed(1)+' MB' : (n/1024).toFixed(0)+' KB'; }
+function cls(e){ return e=='hecho'?'hecho':(e=='err'?'err':'cola'); }
+function tag(e){ return e=='hecho'?'enviado':(e=='err'?'error':'pendiente'); }
+function llenarImpresoras(e){
+  var sel=$('impresoraDestino');
+  var actual=sel.value;
+  sel.innerHTML='';
+  var lista=e.impresorasListadas||[];
+  for (var i=0;i<lista.length;i++){
+    var o=document.createElement('option'); o.value=lista[i]; o.textContent=lista[i]; sel.appendChild(o);
+  }
+  if (actual) sel.value=actual;
+}
+function elegir(m){ post('/api/elegir',{modo:m}, refrescar); }
+function recargarCodigo(){ get('/api/codigo', function(r){ if(r&&r.codigo) $('codigoServidor').value=r.codigo; }); }
+function copiarCodigo(){ var t=$('codigoServidor'); t.select(); document.execCommand('copy'); alert('Código copiado. Mandáselo a quien imprima acá.'); }
+function copiarRegistro(){ recargarRegistro(); setTimeout(function(){ var x=$('log'); var r=document.createRange(); r.selectNodeContents(x); var s=window.getSelection(); s.removeAllRanges(); s.addRange(r); document.execCommand('copy'); alert('Registro copiado.'); },400); }
+function borradoRegistro(){ alert('Abre VPNPrintDatos\\registro.txt al lado del programa, copialo y mándalo a quien arregla red/impresoras.'); }
+function guardarConfig(cb){
+  var manual=($('impresoraManual').value||'').replace(/^\s+|\s+$/g,'');
+  var dest=manual || $('impresoraDestino').value;
+  post('/api/config', { impresoraDestino: dest, urlServidor: $('ipFija').value, puertoD: parseInt($('puertoD').value||'0',10) }, function(r){
+    if (r && r.error){ alert(r.error); return; }
+    configSucio=false;
+    $('impresoraManual').value='';
+    $('configAviso').textContent='Guardado: ' + dest;
+    refrescar();
+    if (cb) cb(dest);
+  });
+}
+function pegar(){
+  var cod=$('pegarCodigo').value;
+  if(!cod){ alert('Pegá primero el código.'); return; }
+  post('/api/pegar-codigo', {codigo: cod}, function(r){
+    if (r && r.ok=='1'){ $('estadoConexion').textContent='Conectado a '+r.servidor; $('pegarCodigo').value=''; }
+    else { alert('Falló: ' + (r?r.error:'sin respuesta')); }
+    refrescar();
+  });
+}
+function instalar(){
+  $('estadoImpresora').textContent='Instalando... (acepta el permiso de administrador)';
+  post('/api/instalar', {}, function(r){
+    if (r && r.ok=='1'){ alert('¡“Impresora VPN” instalada con el driver '+ (r.driver||'') +'!'); }
+    else { alert('No se pudo instalar: ' + (r? (r.error||r.paso): 'sin respuesta')); }
+    refrescar();
+  });
+}
+function quitarImpresora(){ if(!confirm('¿Quitar la Impresora VPN de este equipo?')) return; post('/api/quitar-impresora',{}, refrescar); }
+function accionCola(a,id){ post('/api/cola/accion',{accion:a,id:id}, refrescar); }
+function dispararProbar(){
+  var probar=function(dest){
+    post('/api/probar',{}, function(r){
+      if(r && r.error){ alert(r.error); }
+      else { alert('Hoja de prueba enviada a: ' + (dest || (EST && EST.impresora) || 'la impresora elegida')); }
+      refrescar();
+    });
+  };
+  if (configSucio){ guardarConfig(probar); } else { probar(''); }
+}
+function abrirFirewall(){ post('/api/firewall',{}, function(r){ alert('Eso va: aceptá el permiso de administrador. Si el puerto cambiaste, volvé a pulsarlo.'); refrescar(); }); }
+function recargarRegistro(){ get('/api/registro', function(r){ if(r&&r.lineas) $('log').textContent=r.lineas.join('\n'); }); }
+function toggleArranque(){
+  var on=$('chkArranque').checked;
+  post('/api/arranque',{on:on}, function(r){ if(r&&r.ok!='1'){ alert('No se pudo: '+(r?r.error:'?')); $('chkArranque').checked=!on; } });
+}
+refrescar();
+setInterval(refrescar, 2500);
+</script>
+</body>
+</html>
