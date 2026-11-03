@@ -112,3 +112,14 @@ go build -trimpath -ldflags "-s -w -H=windowsgui" -o VPNPrint-Servidor.exe .
 go build -trimpath -ldflags "-s -w -H=windowsgui" -o VPNPrint-Cliente.exe .
 GOARCH=386 go build ... # versión 32 bits
 ```
+=== IP / DHCP ===
+Recomendación para evitar perdida de conexion tras reinicio:
+- Fijar IP fija o reserva DHCP en el router (MAC/hostname).
+- Repegar codigo tras cambiar IP del servidor.
+- El cliente ahora reporta SIN CONEXION si el ping falla.
+=== IP / DHCP ===
+Recomendación para evitar perdida de conexion tras reinicio:
+- Fijar IP fija o reserva DHCP en el router (MAC/hostname).
+- Repegar codigo tras cambiar IP del servidor.
+- El cliente ahora reporta SIN CONEXION si el ping falla.
+
