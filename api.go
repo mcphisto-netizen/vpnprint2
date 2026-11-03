@@ -578,3 +578,9 @@ func arranqueActivo() bool {
 	}
 	return strings.Contains(string(out), "VPNPrint")
 }
+func escuchaAbierta(direccion string) bool {
+	conn, err := net.DialTimeout("tcp", direccion, 2*time.Second)
+	if err != nil { return false }
+	_ = conn.Close()
+	return true
+}

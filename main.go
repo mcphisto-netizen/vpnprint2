@@ -194,6 +194,7 @@ func enFondo() bool {
 }
 
 func arrancarModo() {
+	glog.add("ARRANQUE modo=%s datos=%s", cfg.Modo, dirDatos)
 	switch cfg.Modo {
 	case "servidor":
 		if serv != nil {
@@ -245,6 +246,7 @@ func arrancarModo() {
 		cliente = nuevoLadoCliente(dirCola2)
 		go cliente.bucleEnviar()
 		go cliente.bucleEscuchar()
+		go cliente.buclePing()
 	}
 }
 

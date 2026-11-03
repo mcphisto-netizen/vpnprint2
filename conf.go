@@ -7,18 +7,20 @@ import (
 	"sync"
 )
 
-// Config guarda la configuración persistente de cada modo.
-// kliente: codigo de conexion; servidr: impresora destino y puerto.
 type Config struct {
 	Modo             string `json:"modo"` // "servidor" | "cliente" | ""
 	// servidor
 	ImpresoraDestino string `json:"impresoraDestino,omitempty"`
 	PuertoDatos      int    `json:"puertoDatos,omitempty"` // servidor: puerto HTTPS de trabajos
 	// cliente
-	UrlServidor string `json:"urlServidor,omitempty"`
-	Token       string `json:"token,omitempty"`
-	Fingerprint string `json:"fingerprint,omitempty"`
-	PuertoUI    int    `json:"puertoUI,omitempty"`
+	UrlServidor      string `json:"urlServidor,omitempty"`
+	Token            string `json:"token,omitempty"`
+	Fingerprint      string `json:"fingerprint,omitempty"`
+	PuertoUI         int    `json:"puertoUI,omitempty"`
+	// estado de conexion (cada 15s: ping al servidor)
+	EstadoConexion   string `json:"estadoConexion,omitempty"`
+	IpFija          string `json:"ipFija,omitempty"`
+	PuertoServidor   int    `json:"puertoServidor,omitempty"`
 }
 
 var (

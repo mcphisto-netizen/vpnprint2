@@ -316,6 +316,36 @@ func (c *ladoCliente) probarConexion(codPegado string) (string, error) {
 
 // --- listener 9100: recibe lo que la impresora virtual escupe ---
 
+func (c *ladoCliente) buclePing() {
+	defer recuperarPanic("buclePing")
+	for {
+		time.Sleep(15 * time.Second)
+		if cfg.UrlServidor == "" {
+			cfg.EstadoConexion = "sin servidor"
+			continue
+		}
+		url := cfg.UrlServidor + "/v1/ping"
+		if cfg.EstadoConexion == "" {
+			cfg.EstadoConexion = "intentando"
+		}
+		req, _ := http.NewRequest("GET", url, nil)
+		req.Header.Set("X-VPNPrint-Token", cfg.Token)
+		resp, err := c.tc.Do(req)
+		if err != nil {
+			cfg.EstadoConexion = "sinConexion"
+			continue
+		}
+		if resp.StatusCode == http.StatusOK {
+			if cfg.EstadoConexion != "conectado" {
+				cfg.EstadoConexion = "conectado"
+			}
+		} else {
+			cfg.EstadoConexion = "sinConexion"
+		}
+		resp.Body.Close()
+	}
+}
+
 func (c *ladoCliente) bucleEscuchar() {
 	defer recuperarPanic("bucleEscuchar")
 	direc := fmt.Sprintf("127.0.0.1:%d", puertoLocal9100)
