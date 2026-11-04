@@ -112,24 +112,12 @@ func (s *ladoServidor) cargarCola() {
 	}
 }
 
-func (s *ladoServidor) autorizaToken(r *http.Request) bool {
-	tok := r.Header.Get("X-VPNPrint-Token")
-	if tok == "" || cfg.Token == "" || tok != cfg.Token {
-		return false
-	}
-	return true
-}
-
 func (s *ladoServidor) muxRegistro(m *http.ServeMux) {
 	m.HandleFunc("/v1/ping", s.ping)
 	m.HandleFunc("/v1/trabajo", s.recibirTrabajo)
 }
 
 func (s *ladoServidor) ping(w http.ResponseWriter, r *http.Request) {
-	if !s.autorizaToken(r) {
-		http.Error(w, "token invalido", http.StatusUnauthorized)
-		return
-	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"ok": "1", "app": "VPNPrint"})
 }
@@ -137,11 +125,6 @@ func (s *ladoServidor) ping(w http.ResponseWriter, r *http.Request) {
 func (s *ladoServidor) recibirTrabajo(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "solo POST", http.StatusMethodNotAllowed)
-		return
-	}
-	if !s.autorizaToken(r) {
-		glog.add("trabajo rechazado: token invalido desde %s", r.RemoteAddr)
-		http.Error(w, "token invalido", http.StatusUnauthorized)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 512*1024*1024))

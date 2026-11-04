@@ -14,8 +14,6 @@ type Config struct {
 	PuertoDatos      int    `json:"puertoDatos,omitempty"` // servidor: puerto HTTPS de trabajos
 	// cliente
 	UrlServidor      string `json:"urlServidor,omitempty"`
-	Token            string `json:"token,omitempty"`
-	Fingerprint      string `json:"fingerprint,omitempty"`
 	PuertoUI         int    `json:"puertoUI,omitempty"`
 	// estado de conexion (cada 15s: ping al servidor)
 	EstadoConexion   string `json:"estadoConexion,omitempty"`

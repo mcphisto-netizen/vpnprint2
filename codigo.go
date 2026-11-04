@@ -1,105 +1,62 @@
 package main
 
 import (
-	"bytes"
-	"compress/zlib"
-	"crypto/sha256"
-	"crypto/subtle"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"io"
+	"net"
+	"strconv"
 	"strings"
 )
 
-// codigoJSON es el contenido interno del código de conexión.
+// codigoJSON: la conexión es solo IP (o host) y puerto del servidor.
 type codigoJSON struct {
-	B string `json:"b"` // base (ej: equipo.dominio o IP)
-	P int    `json:"p"` // puerto de datos (HTTPS/trabajos)
-	S string `json:"s"` // token secreto
-	F string `json:"f"` // fingerprint SHA256 del cert (hex sin :), "-" = cualquiera
+	B string // IP o host
+	P int    // puerto de datos
 }
 
-// generarCodigo: VPP1 + base64url(json comprimido), en bloques de 5
-// separados con punto. El separador NO puede ser '-' porque es un
-// carácter VÁLIDO del base64url.
-func generarCodigo(base string, puerto int, token, fingerprint string) string {
-	cj := codigoJSON{B: base, P: puerto, S: token, F: fingerprint}
-	raw, _ := json.Marshal(cj)
-	var buf bytes.Buffer
-	z := zlib.NewWriter(&buf)
-	_, _ = z.Write(raw)
-	_ = z.Close()
-	enc := base64.RawURLEncoding.EncodeToString(buf.Bytes())
-	return piezas("VPP1" + enc)
-}
-
-func piezas(s string) string {
-	n := len(s)
-	var out strings.Builder
-	for i := 0; i < n; i += 5 {
-		if i > 0 {
-			out.WriteByte('.')
-		}
-		if i+5 > n {
-			out.WriteString(s[i:])
-		} else {
-			out.WriteString(s[i : i+5])
-		}
+// generarCodigo devuelve "IP:PUERTO" en texto plano.
+func generarCodigo(base string, puerto int) string {
+	base = strings.TrimSpace(base)
+	base = strings.TrimPrefix(base, "https://")
+	base = strings.TrimPrefix(base, "http://")
+	base = strings.TrimSuffix(base, "/")
+	if h, _, err := net.SplitHostPort(base); err == nil {
+		base = h
 	}
-	return out.String()
+	return net.JoinHostPort(base, strconv.Itoa(puerto))
 }
 
-func urlLimpia(s string) string {
-	s = strings.TrimSpace(s)
-	s = strings.ReplaceAll(s, "\n", "")
-	s = strings.ReplaceAll(s, "\r", "")
-	return s
-}
-
-// parsearCodigo acepta el código con o sin separadores visuales
-// (puntos/espacios). Los guiones se respetan: son parte del base64url.
+// parsearCodigo acepta "IP:PUERTO", "IP" (usa 8443) y también "IP|PUERTO".
 func parsearCodigo(pegado string) (*codigoJSON, error) {
-	pegado = urlLimpia(pegado)
-	pegado = strings.ReplaceAll(pegado, " ", "")
-	pegado = strings.ReplaceAll(pegado, ".", "")
-	pegado = strings.TrimPrefix(pegado, "VPP1")
-	dec, err := base64.RawURLEncoding.DecodeString(pegado)
-	if err != nil {
-		return nil, fmt.Errorf("código inválido (%v)", err)
+	s := strings.TrimSpace(pegado)
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.ReplaceAll(s, "\n", "")
+	s = strings.ReplaceAll(s, " ", "")
+	s = strings.TrimPrefix(s, "https://")
+	s = strings.TrimPrefix(s, "http://")
+	s = strings.TrimSuffix(s, "/")
+	if s == "" {
+		return nil, fmt.Errorf("escribí la IP del servidor, por ejemplo 192.168.0.10:8443")
 	}
-	zr, err := zlib.NewReader(bytes.NewReader(dec))
-	if err != nil {
-		return nil, fmt.Errorf("código inválido (%v)", err)
-	}
-	defer zr.Close()
-	raw, err := io.ReadAll(io.LimitReader(zr, 4096))
-	if err != nil {
-		return nil, fmt.Errorf("código inválido (%v)", err)
-	}
-	var cj codigoJSON
-	if err := json.Unmarshal(raw, &cj); err != nil || cj.B == "" || cj.P <= 0 {
-		return nil, fmt.Errorf("código inválido (contenido)")
-	}
-	return &cj, nil
-}
 
-// urlDeCertValido: fija el certificado esperado (pinning) contra el código.
-func urlDeCertValido(co certCheck) error {
-	if co.fpEsperado == "" || co.fpEsperado == "-" {
-		return nil // código sin pin: se acepta cualquier certificado
+	// forma alternativa "IP|PUERTO"
+	if h, p, ok := strings.Cut(s, "|"); ok {
+		s = net.JoinHostPort(h, p)
 	}
-	if subtle.ConstantTimeCompare([]byte(co.fpEsperado), []byte(co.fpObtenido)) != 1 {
-		return fmt.Errorf("el certificado del servidor no coincide con el código (conexión rechazada)")
+
+	host, portTxt, err := net.SplitHostPort(s)
+	if err != nil {
+		// sin puerto: usar el de siempre
+		if strings.Contains(s, ":") {
+			return nil, fmt.Errorf("dirección inválida: %s", s)
+		}
+		host, portTxt = s, "8443"
 	}
-	return nil
-}
-
-type certCheck struct {
-	fpEsperado, fpObtenido string
-}
-
-func fingerprintSha256(der []byte) string {
-	h := sha256.Sum256(der)
-	return fmt.Sprintf("%x", h)
+	if host == "" {
+		return nil, fmt.Errorf("falta la IP del servidor")
+	}
+	port, err := strconv.Atoi(portTxt)
+	if err != nil || port <= 0 || port > 65535 {
+		return nil, fmt.Errorf("puerto inválido: %s", portTxt)
+	}
+	return &codigoJSON{B: host, P: port}, nil
 }

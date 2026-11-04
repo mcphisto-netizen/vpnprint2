@@ -21,8 +21,6 @@ import (
 const version = "1.5"
 const empezarPuertoUI = 8422
 
-var fingerprintServidor string
-
 // mutex de instancia única
 var onceMu sync.Mutex
 var singleInstanceMutex windows.Handle
@@ -89,8 +87,6 @@ func main() {
 	cfg.Modo = detectarModo(args)
 	if guardado != "" && guardado != cfg.Modo {
 		cfg.UrlServidor = ""
-		cfg.Fingerprint = ""
-		cfg.Token = ""
 		glog.add("modo %s por el nombre del ejecutable (config.json decia %q); descarto los datos del modo anterior", cfg.Modo, guardado)
 	}
 
@@ -205,22 +201,17 @@ func arrancarModo() {
 		if serv != nil {
 			return
 		}
-		if cfg.Token == "" {
-			cfg.Token = randToken()
-			_ = saveConfig(dirDatos)
-		}
 		if cfg.PuertoDatos == 0 {
 			cfg.PuertoDatos = 8443
 		}
 		if cfg.ImpresoraDestino == "" {
 			cfg.ImpresoraDestino = autodetectarImpresora()
 		}
-		cert, fp, err := asegurarCertificado(dirDatos)
+		cert, _, err := asegurarCertificado(dirDatos)
 		if err != nil {
 			glog.add("ERROR certificado servidor: %v", err)
 			return
 		}
-		fingerprintServidor = fp
 		domicilio := fmt.Sprintf("0.0.0.0:%d", cfg.PuertoDatos)
 		ln, err := net.Listen("tcp", domicilio)
 		if err != nil {

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -22,12 +20,6 @@ var (
 	serv     *ladoServidor
 	cliente  *ladoCliente
 )
-
-func randToken() string {
-	b := make([]byte, 24)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
-}
 
 // dirPrograma: carpeta al lado del exe (portable). Si no deja escribir,
 // usa %LOCALAPPDATA%\VPNPrint y avisa en el log.
@@ -212,12 +204,12 @@ func apiEstado(w http.ResponseWriter, r *http.Request) {
 		e.Impresora = cfg.ImpresoraDestino
 		e.IpFija = cfg.UrlServidor
 		e.VerCodigo = ""
-		if cfg.Token != "" && (cfg.UrlServidor != "" || principalIP() != "") {
+		if cfg.UrlServidor != "" || principalIP() != "" {
 			base := cfg.UrlServidor
 			if base == "" {
 				base = principalIP()
 			}
-			e.VerCodigo = generarCodigo(base, cfg.PuertoDatos, cfg.Token, fingerprintServidor)
+			e.VerCodigo = generarCodigo(base, cfg.PuertoDatos)
 		}
 	}
 	if cfg.Modo == "cliente" {
@@ -289,9 +281,6 @@ func apiElegir(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg.Modo = p.Modo
 	if p.Modo == "servidor" {
-		if cfg.Token == "" {
-			cfg.Token = randToken()
-		}
 		if cfg.PuertoDatos == 0 {
 			cfg.PuertoDatos = 8443
 		}
@@ -361,7 +350,7 @@ func apiConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func apiCodigo(w http.ResponseWriter, r *http.Request) {
-	if cfg.Modo != "servidor" || cfg.Token == "" {
+	if cfg.Modo != "servidor" {
 		http.Error(w, "no sos servidor", http.StatusBadRequest)
 		return
 	}
@@ -370,7 +359,7 @@ func apiCodigo(w http.ResponseWriter, r *http.Request) {
 		base = principalIP()
 	}
 	jsonResp(w, map[string]string{
-		"codigo": generarCodigo(base, cfg.PuertoDatos, cfg.Token, fingerprintServidor),
+		"codigo": generarCodigo(base, cfg.PuertoDatos),
 		"ip":     principalIP(),
 	})
 }

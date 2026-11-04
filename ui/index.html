@@ -63,7 +63,7 @@
       <button class="rojo" onclick="copiarRegistro()">Copiar registro completo</button>
     </div>
     <textarea id="codigoServidor" rows="3" readonly title="Mándalo por WhatsApp/mail a quien quiera imprimir ahí"></textarea>
-    <div class="chico">El c&oacute;digo contiene la IP/puerto y una llave. Nada de carpetas compartidas: solo pega el c&oacute;digo en la otra PC.
+    <div class="chico">El c&oacute;digo es solo la IP y el puerto del servidor (ej: 192.168.0.10:8443). Pegalo en la otra PC. Nada de carpetas compartidas.
       IP local detectada: <span id="ipLocal"></span>. Si esta PC cambia de IP, edita "Dominio o IP fija" abajo.</div>
   </div>
 
@@ -92,7 +92,7 @@
 
   <div class="tarjeta oculto" id="tarjetaCodigoCliente">
     <h2>1. Conectar a la impresora remota</h2>
-    <textarea id="pegarCodigo" rows="3" placeholder="Peg&aacute; ac&aacute; el c&oacute;digo que te mandaron (VPP1-...)"></textarea>
+    <textarea id="pegarCodigo" rows="3" placeholder="IP:PUERTO del servidor (ej: 192.168.0.10:8443)"></textarea>
     <div class="fila" style="margin-top:8px">
       <button class="primario" onclick="pegar()">Conectar</button>
       <span id="estadoConexion" class="chico"></span>
@@ -284,7 +284,7 @@ function guardarConfig(cb){
 }
 function pegar(){
   var cod=$('pegarCodigo').value;
-  if(!cod){ alert('Pegá primero el código.'); return; }
+  if(!cod){ alert('Escribí la IP:PUERTO del servidor.'); return; }
   post('/api/pegar-codigo', {codigo: cod}, function(r){
     if (r && r.ok=='1'){ $('estadoConexion').textContent='Conectado a '+r.servidor; $('pegarCodigo').value=''; }
     else { alert('Falló: ' + (r?r.error:'sin respuesta')); }

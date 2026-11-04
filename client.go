@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -69,8 +70,8 @@ func refrescarTipoVirtual() {
 
 func (c *ladoCliente) rehacerCliente() {
 	tr := &http.Transport{}
-	if cfg.Fingerprint != "" || cfg.UrlServidor != "" {
-		tr.TLSClientConfig = tlsCliente(cfg.Fingerprint)
+	if cfg.UrlServidor != "" {
+		tr.TLSClientConfig = tlsCliente()
 	}
 	c.tc = &http.Client{Transport: tr, Timeout: 120 * time.Second}
 }
@@ -163,7 +164,6 @@ func (c *ladoCliente) enviarUno(id string) {
 		return
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
-	req.Header.Set("X-VPNPrint-Token", cfg.Token)
 	req.Header.Set("X-VPNPrint-Nombre", nombre2)
 	if esGDI {
 		req.Header.Set("X-VPNPrint-GDI", "1")
@@ -179,8 +179,8 @@ func (c *ladoCliente) enviarUno(id string) {
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode == http.StatusUnauthorized {
-		c.marcarError(id, "el servidor rechazo el codigo (token invalido)", time.Hour)
-		glog.add("trabajo %s rechazado por token invalido", id)
+		c.marcarError(id, "el servidor rechazo el trabajo", time.Hour)
+		glog.add("trabajo %s rechazado por el servidor", id)
 		return
 	}
 	if resp.StatusCode != http.StatusAccepted {
@@ -272,24 +272,16 @@ func (c *ladoCliente) accionCola(accion, id string) {
 	c.mu.Unlock()
 }
 
-// probarConexion pega los datos del codigo y prueba /v1/ping
+// probarConexion recibe la IP:PUERTO del servidor y prueba /v1/ping
 func (c *ladoCliente) probarConexion(codPegado string) (string, error) {
 	cj, err := parsearCodigo(codPegado)
 	if err != nil {
 		return "", err
 	}
-	base := cj.B
-	if !strings.Contains(base, "://") {
-		base = "https://" + base
-	}
-	url := fmt.Sprintf("%s:%d/v1/ping", strings.TrimRight(base, "/"), cj.P)
-	cfg.Token = cj.S
-	dirty := cj.F
-	provisorio := tlsCliente(dirty)
-	cl := &http.Client{Transport: &http.Transport{TLSClientConfig: provisorio}, Timeout: 10 * time.Second}
-	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("X-VPNPrint-Token", cj.S)
-	resp, err := cl.Do(req)
+	base := "https://" + net.JoinHostPort(cj.B, strconv.Itoa(cj.P))
+	url := base + "/v1/ping"
+	cl := &http.Client{Transport: &http.Transport{TLSClientConfig: tlsCliente()}, Timeout: 10 * time.Second}
+	resp, err := cl.Get(url)
 	if err != nil {
 		return "", fmt.Errorf("no alcanzo al servidor %s:%d: %v", cj.B, cj.P, err)
 	}
@@ -298,17 +290,12 @@ func (c *ladoCliente) probarConexion(codPegado string) (string, error) {
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("el servidor respondio %s", resp.Status)
 	}
-	fp := ""
-	if resp.TLS != nil && len(resp.TLS.PeerCertificates) > 0 {
-		fp = fingerprintSha256(resp.TLS.PeerCertificates[0].Raw)
+	cfg.UrlServidor = base
+	if err := saveConfig(dirDatos); err != nil {
+		glog.add("ERROR guardando servidor %s: %v", base, err)
 	}
-	// guardar base COMPLETA (scheme + host + puerto) para el envio
-	cfg.UrlServidor = fmt.Sprintf("%s:%d", strings.TrimRight(base, "/"), cj.P)
-	cfg.Fingerprint = dirty
-	cfg.Fingerprint = dirty
-	saveConfig(dirDatos)
 	c.rehacerCliente()
-	glog.add("evento: codigo aceptado, servidor %s (cert %s...)", url, fp[:20])
+	glog.add("evento: servidor configurado en %s", base)
 	return url, nil
 }
 
@@ -329,7 +316,6 @@ func (c *ladoCliente) buclePing() {
 			cfg.EstadoConexion = "intentando"
 		}
 		req, _ := http.NewRequest("GET", url, nil)
-		req.Header.Set("X-VPNPrint-Token", cfg.Token)
 		resp, err := c.tc.Do(req)
 		if err != nil {
 			cfg.EstadoConexion = "sinConexion"

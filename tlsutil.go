@@ -4,9 +4,11 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"fmt"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -55,14 +57,14 @@ func asegurarCertificado(dir string) (tls.Certificate, string, error) {
 	return cert, fp, nil
 }
 
-// tlsCliente crea un TLS config que no usa la PKI del sistema:
-// solo confia si el certificado tiene el fingerprint del codigo pegado.
-func tlsCliente(fpEsperado string) *tls.Config {
-	// Modo abierto: no validar certificado (sin pinning).
-	// TODO: reactivar pinning cuando el sistema este estable.
-	return &tls.Config{
-		InsecureSkipVerify: true,
-	}
+// tlsCliente: el servidor usa certificado autofirmado, no se valida.
+func tlsCliente() *tls.Config {
+	return &tls.Config{InsecureSkipVerify: true}
+}
+
+func fingerprintSha256(der []byte) string {
+	h := sha256.Sum256(der)
+	return fmt.Sprintf("%x", h)
 }
 
 type errSimple struct{ s string }
