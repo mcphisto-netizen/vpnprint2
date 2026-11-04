@@ -48,8 +48,25 @@ Filename: "{app}\VPNPrint-Servidor.exe"; Description: "Abrir VPNPrint Servidor (
 Filename: "{app}\VPNPrint-Cliente.exe"; Description: "Abrir VPNPrint Cliente (conectar al servidor)"; Flags: nowait postinstall skipifsilent unchecked
 
 [Code]
+procedure QuitarServicioViejo(const Nombre: String);
+var
+  rc: Integer;
+begin
+  // Versiones anteriores instalaban servicios LocalSystem. Hay que sacarlos
+  // antes de copiar archivos: si quedan, arrancan al boot con otro directorio
+  // de datos y se quedan con el puerto 9100.
+  Exec('sc.exe', 'stop ' + Nombre, '', SW_HIDE, ewWaitUntilTerminated, rc);
+  Exec('sc.exe', 'delete ' + Nombre, '', SW_HIDE, ewWaitUntilTerminated, rc);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
+  if CurStep = ssInstall then
+  begin
+    QuitarServicioViejo('VPNPrint-Servidor');
+    QuitarServicioViejo('VPNPrint-Cliente');
+    QuitarServicioViejo('VPNPrint');
+  end;
   if CurStep = ssPostInstall then
   begin
     // Crear VPNPrint-AbrirEstado.cmd
@@ -62,11 +79,12 @@ function NextButtonClick(CurPageID: Integer): Boolean;
 var
   resultCode: Integer;
 begin
-  // Migración: desinstalar servicios antiguos de versiones previas
+  // Migración: borrar tareas programadas de versiones previas
   if CurPageID = wpReady then
   begin
     Exec('schtasks.exe', '/delete /tn VPNPrint-Servidor /f', '', SW_HIDE, True, resultCode);
     Exec('schtasks.exe', '/delete /tn VPNPrint-Cliente /f', '', SW_HIDE, True, resultCode);
+    Exec('schtasks.exe', '/delete /tn VPNPrint /f', '', SW_HIDE, True, resultCode);
   end;
   Result := True;
 end;

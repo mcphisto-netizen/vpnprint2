@@ -240,6 +240,7 @@ func arrancarModo() {
 		}
 		dirCola2 := filepath.Join(dirDatos, "cola")
 		cliente = nuevoLadoCliente(dirCola2)
+		glog.add("cliente: servidor=%q, %d trabajo(s) en cola", cfg.UrlServidor, len(cliente.listaCola()))
 		go cliente.bucleEnviar()
 		go cliente.bucleEscuchar()
 		go cliente.buclePing()
