@@ -44,8 +44,6 @@ Name: "{group}\VPNPrint - Cerrar"; Filename: "{app}\CERRAR-VPNPRINT.cmd"; IconFi
 Name: "{group}\VPNPrint - Desinstalar"; Filename: "{uninstallexe}"
 
 [Run]
-Filename: "{app}\VPNPrint-Servidor.exe"; Parameters: "--instalar-servicio"; Flags: runhidden
-Filename: "{app}\VPNPrint-Cliente.exe"; Parameters: "--instalar-servicio"; Flags: runhidden
 Filename: "{app}\VPNPrint-Servidor.exe"; Description: "Abrir VPNPrint Servidor (configurar impresora)"; Flags: nowait postinstall skipifsilent unchecked
 Filename: "{app}\VPNPrint-Cliente.exe"; Description: "Abrir VPNPrint Cliente (conectar al servidor)"; Flags: nowait postinstall skipifsilent unchecked
 
@@ -58,4 +56,17 @@ begin
     SaveStringToFile(ExpandConstant('{app}\VPNPrint-AbrirEstado.cmd'),
       '@echo off' + #13#10 + 'start http://127.0.0.1:8422' + #13#10, False);
   end;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  resultCode: Integer;
+begin
+  // Migración: desinstalar servicios antiguos de versiones previas
+  if CurPageID = wpReady then
+  begin
+    Exec('schtasks.exe', '/delete /tn VPNPrint-Servidor /f', '', SW_HIDE, True, resultCode);
+    Exec('schtasks.exe', '/delete /tn VPNPrint-Cliente /f', '', SW_HIDE, True, resultCode);
+  end;
+  Result := True;
 end;

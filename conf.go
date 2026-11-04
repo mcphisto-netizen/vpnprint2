@@ -28,14 +28,18 @@ var (
 	cfg   = &Config{}
 )
 
-func loadConfig(dir string) *Config {
+func loadConfig(dir string) error {
 	cfgMu.Lock()
 	defer cfgMu.Unlock()
 	b, err := os.ReadFile(filepath.Join(dir, "config.json"))
-	if err == nil {
-		_ = json.Unmarshal(b, cfg)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		// config no existe aún, usar defaults
+		return nil
 	}
-	return cfg
+	return json.Unmarshal(b, cfg)
 }
 
 func saveConfig(dir string) error {

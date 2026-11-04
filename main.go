@@ -13,8 +13,9 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"sync"
 
-	"golang.org/x/sys/windows/svc"
+	"golang.org/x/sys/windows"
 )
 
 const version = "1.5"
@@ -22,9 +23,12 @@ const empezarPuertoUI = 8422
 
 var fingerprintServidor string
 
+// mutex de instancia única
+var onceMu sync.Mutex
+var singleInstanceMutex windows.Handle
+
 func main() {
 	// ContinuarOnError: un argumento desconocido NO debe cerrar la app.
-	// (el arranque automatico usa "--bg" y antes moria con "flag provided but not defined")
 	flag.CommandLine.Init(os.Args[0], flag.ContinueOnError)
 	flag.CommandLine.SetOutput(io.Discard)
 	rutaSil := flag.Bool("instalar-silenciosa", false, "instala la impresora VPN (elevado)")
@@ -32,52 +36,24 @@ func main() {
 	rutoFw := flag.Bool("firewall", false, "abre el puerto de datos en el firewall (elevado)")
 	flag.Bool("bg", false, "arranca en segundo plano, sin abrir el navegador")
 	tray := flag.Bool("tray", false, "ejecuta el monitor en la bandeja del sistema")
-	servicio := flag.Bool("servicio", false, "ejecuta como servicio de Windows")
-	instalarServ := flag.Bool("instalar-servicio", false, "instala el servicio de Windows")
-	desinstalarServ := flag.Bool("desinstalar-servicio", false, "desinstala el servicio de Windows")
 	_ = flag.CommandLine.Parse(os.Args[1:])
 
-	if *instalarServ {
-		if err := instalarServicio(); err != nil {
-			fmt.Println("ERROR:", err)
-			os.Exit(1)
-		}
-		fmt.Println("Servicio instalado correctamente")
-		return
+	// Single-instance mutex per exe/mode
+	if !tryAcquireSingleInstance() {
+		fmt.Println("Ya hay una instancia de VPNPrint ejecutándose para este modo.")
+		os.Exit(1)
 	}
-	if *desinstalarServ {
-		if err := desinstalarServicio(); err != nil {
-			fmt.Println("ERROR:", err)
-			os.Exit(1)
-		}
-		fmt.Println("Servicio desinstalado correctamente")
-		return
-	}
-	if *servicio {
-		dirDatos = dirPrograma()
-		_ = os.MkdirAll(dirDatos, 0o755)
-		_ = loadConfig(dirDatos)
-		initLog(dirDatos)
-		arrancarModo()
-		exe, _ := os.Executable()
-		nombre := "VPNPrint"
-		if strings.Contains(strings.ToLower(exe), "cliente") {
-			nombre = "VPNPrint-Cliente"
-		} else if strings.Contains(strings.ToLower(exe), "servidor") {
-			nombre = "VPNPrint-Servidor"
-		}
-		err := svc.Run(nombre, &servicioVPNPrint{nombre: nombre})
-		if err != nil {
-			glog.add("ERROR servicio: %v", err)
-		}
-		return
-	}
+	defer releaseSingleInstance()
 
+	// Inicialización común
 	dirDatos = dirPrograma()
 	_ = os.MkdirAll(dirDatos, 0o755)
-	_ = loadConfig(dirDatos)
+	if err := loadConfig(dirDatos); err != nil {
+		glog.add("ERROR cargando config: %v", err)
+	}
 	initLog(dirDatos)
-	// Autorreparar la ruta del arranque automatico si el exe se movio.
+
+	// Auto-reparar HKCU Run si está activo
 	if arranqueActivo() {
 		if exe, err := os.Executable(); err == nil {
 			nombreReg := "VPNPrint"
@@ -107,22 +83,21 @@ func main() {
 		return
 	}
 
+	// Detectar modo y arrancar motor
 	args := os.Args[1:]
 	guardado := cfg.Modo
 	cfg.Modo = detectarModo(args)
 	if guardado != "" && guardado != cfg.Modo {
-		// Se paso de un modo al otro: lo guardado del modo anterior estorba
-		// (por ej. un token de otro servidor hacia que el codigo nuevo no sirviera).
 		cfg.UrlServidor = ""
 		cfg.Fingerprint = ""
 		cfg.Token = ""
 		glog.add("modo %s por el nombre del ejecutable (config.json decia %q); descarto los datos del modo anterior", cfg.Modo, guardado)
 	}
 
-	// pre-elegir driver (para mostrar en la UI aunque no instale)
+	// pre-elegir driver
 	elegidoDriver = elegirDriver()
 
-	// cola de trabajos (cliente impuestos y servidor: impresos)
+	// cola de trabajos
 	dirCola := dirDatos
 	if cfg.Modo == "servidor" {
 		dirCola = filepath.Join(dirDatos, "impresos")
@@ -143,7 +118,9 @@ func main() {
 		return
 	}
 	cfg.PuertoUI = pu
-	_ = saveConfig(dirDatos)
+	if err := saveConfig(dirDatos); err != nil {
+		glog.add("ERROR guardando config: %v", err)
+	}
 	url := fmt.Sprintf("http://127.0.0.1:%d", pu)
 	glog.add("panel local en %s (datos en %s)", url, dirDatos)
 
@@ -159,6 +136,34 @@ func main() {
 	select {}
 }
 
+func tryAcquireSingleInstance() bool {
+	exe, _ := os.Executable()
+	name := strings.ReplaceAll(filepath.Base(exe), ".exe", "")
+	// Global namespace for mutex: "Global\\VPNPrint-<exe>"
+	mutexName := "Global\\VPNPrint-" + name
+	namePtr, err := windows.UTF16PtrFromString(mutexName)
+	if err != nil {
+		return true // si falla, permitir arrancar
+	}
+	h, err := windows.CreateMutex(nil, true, namePtr)
+	if err != nil {
+		return true
+	}
+	singleInstanceMutex = h
+	// ERROR_ALREADY_EXISTS = 183
+	if windows.GetLastError() == windows.ERROR_ALREADY_EXISTS {
+		windows.CloseHandle(h)
+		return false
+	}
+	return true
+}
+
+func releaseSingleInstance() {
+	if singleInstanceMutex != 0 {
+		windows.ReleaseMutex(singleInstanceMutex)
+		windows.CloseHandle(singleInstanceMutex)
+	}
+}
 func detectarModo(args []string) string {
 	for _, a := range args {
 		switch strings.ToLower(strings.TrimLeft(a, "-")) {

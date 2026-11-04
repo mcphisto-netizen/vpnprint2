@@ -113,8 +113,10 @@ func (s *ladoServidor) cargarCola() {
 }
 
 func (s *ladoServidor) autorizaToken(r *http.Request) bool {
-	// Modo abierto (sin autenticacion): aceptar toda conexion.
-	// TODO: reactivar validacion de token cuando el sistema este estable.
+	tok := r.Header.Get("X-VPNPrint-Token")
+	if tok == "" || cfg.Token == "" || tok != cfg.Token {
+		return false
+	}
 	return true
 }
 
