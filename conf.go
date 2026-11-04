@@ -19,6 +19,7 @@ type Config struct {
 	EstadoConexion   string `json:"estadoConexion,omitempty"`
 	IpFija          string `json:"ipFija,omitempty"`
 	PuertoServidor   int    `json:"puertoServidor,omitempty"`
+	SinArranque      bool   `json:"sinArranque,omitempty"` // el usuario desactivo el autoarranque
 }
 
 var (

@@ -43,6 +43,11 @@ Name: "{group}\VPNPrint - Ver estado"; Filename: "{app}\VPNPrint-AbrirEstado.cmd
 Name: "{group}\VPNPrint - Cerrar"; Filename: "{app}\CERRAR-VPNPRINT.cmd"; IconFilename: "{app}\VPNPrint-Servidor.exe"
 Name: "{group}\VPNPrint - Desinstalar"; Filename: "{uninstallexe}"
 
+[Registry]
+; Autoarranque al iniciar sesion para el componente instalado.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "VPNPrint-Servidor"; ValueData: """{app}\VPNPrint-Servidor.exe"" --bg"; Flags: uninsdeletevalue; Components: servidor
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "VPNPrint-Cliente"; ValueData: """{app}\VPNPrint-Cliente.exe"" --bg"; Flags: uninsdeletevalue; Components: cliente
+
 [Run]
 Filename: "{app}\VPNPrint-Servidor.exe"; Description: "Abrir VPNPrint Servidor (configurar impresora)"; Flags: nowait postinstall skipifsilent unchecked
 Filename: "{app}\VPNPrint-Cliente.exe"; Description: "Abrir VPNPrint Cliente (conectar al servidor)"; Flags: nowait postinstall skipifsilent unchecked

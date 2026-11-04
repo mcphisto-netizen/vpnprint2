@@ -511,13 +511,18 @@ func apiArranque(w http.ResponseWriter, r *http.Request) {
 			jsonResp(w, map[string]string{"ok": "", "error": err.Error()})
 			return
 		}
+		cfg.SinArranque = false
 		glog.add("arranque automatico activado")
 	} else {
 		if err := regRunSet(nombreReg, "", false); err != nil {
 			jsonResp(w, map[string]string{"ok": "", "error": err.Error()})
 			return
 		}
+		cfg.SinArranque = true
 		glog.add("arranque automatico quitado")
+	}
+	if err := saveConfig(dirDatos); err != nil {
+		glog.add("ERROR guardando config: %v", err)
 	}
 	jsonResp(w, map[string]any{"ok": "1", "activo": arranqueActivo()})
 }

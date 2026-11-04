@@ -51,19 +51,6 @@ func main() {
 	}
 	initLog(dirDatos)
 
-	// Auto-reparar HKCU Run si está activo
-	if arranqueActivo() {
-		if exe, err := os.Executable(); err == nil {
-			nombreReg := "VPNPrint"
-			if strings.Contains(strings.ToLower(exe), "cliente") {
-				nombreReg = "VPNPrint-Cliente"
-			} else if strings.Contains(strings.ToLower(exe), "servidor") {
-				nombreReg = "VPNPrint-Servidor"
-			}
-			_ = regRunSet(nombreReg, "\""+exe+"\" --bg", true)
-		}
-	}
-
 	if *rutaSil {
 		instalarSilenciosa(dirDatos)
 		return
@@ -88,6 +75,24 @@ func main() {
 	if guardado != "" && guardado != cfg.Modo {
 		cfg.UrlServidor = ""
 		glog.add("modo %s por el nombre del ejecutable (config.json decia %q); descarto los datos del modo anterior", cfg.Modo, guardado)
+	}
+
+	// Autoarranque al iniciar sesion: activado por defecto (HKCU Run).
+	// Solo se omite si el usuario lo desactivo desde la GUI.
+	if !cfg.SinArranque {
+		if exe, err := os.Executable(); err == nil {
+			nombreReg := "VPNPrint"
+			if strings.Contains(strings.ToLower(exe), "cliente") {
+				nombreReg = "VPNPrint-Cliente"
+			} else if strings.Contains(strings.ToLower(exe), "servidor") {
+				nombreReg = "VPNPrint-Servidor"
+			}
+			if err := regRunSet(nombreReg, "\""+exe+"\" --bg", true); err != nil {
+				glog.add("ERROR registrando autoarranque: %v", err)
+			} else {
+				glog.add("autoarranque activo: %s --bg", exe)
+			}
+		}
 	}
 
 	// pre-elegir driver
