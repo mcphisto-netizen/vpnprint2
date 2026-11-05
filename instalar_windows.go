@@ -184,12 +184,17 @@ func tailBytes(b []byte, n int) string {
 
 func psCrePuerto() error {
 	script := fmt.Sprintf(
-		"$existing = Get-PrinterPort -Name '%s' -ErrorAction SilentlyContinue; "+
-			"if ($existing) { exit 0 }; "+
-			"$p = Add-PrinterPort -Name '%s' -PrinterHostAddress '127.0.0.1' -PortNumber %d -SNMP:$false -ErrorAction SilentlyContinue; "+
+		"$n='%s'; "+
+			"$p = Get-PrinterPort -Name $n -ErrorAction SilentlyContinue; "+
 			"if (-not $p) { $p = Get-PrinterPort | Where-Object { $_.PrinterHostAddress -eq '127.0.0.1' -and $_.PortNumber -eq %d } | Select-Object -First 1 }; "+
+			"if (-not $p) { "+
+			"  reg delete 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Print\\Monitors\\Standard TCP/IP Port\\Ports\\%s' /f 2>$null | Out-Null; "+
+			"  try { Add-PrinterPort -Name $n -PrinterHostAddress '127.0.0.1' -PortNumber %d -ErrorAction Stop | Out-Null } "+
+			"  catch { throw ('Add-PrinterPort: ' + $_.Exception.Message) } "+
+			"  $p = Get-PrinterPort -Name $n -ErrorAction SilentlyContinue "+
+			"}; "+
 			"if (-not $p) { throw 'no se pudo crear el puerto' }",
-		nomPuertoLocal, nomPuertoLocal, puertoLocal9100, puertoLocal9100,
+		nomPuertoLocal, puertoLocal9100, nomPuertoLocal, puertoLocal9100,
 	)
 	return psComando(script)
 }
@@ -202,18 +207,19 @@ func psCreImpresora(driver string) error {
 	// con un nombre distinto al solicitado ("IP_127.0.0.1", etc.).
 	script := fmt.Sprintf(
 		"$n='%s'; $d='%s'; "+
-			"$port = Get-PrinterPort | Where-Object { $_.PrinterHostAddress -eq '127.0.0.1' -and $_.PortNumber -eq %d } | Select-Object -First 1; "+
+			"$port = Get-PrinterPort -Name '%s' -ErrorAction SilentlyContinue; "+
+			"if (-not $port) { $port = Get-PrinterPort | Where-Object { $_.PrinterHostAddress -eq '127.0.0.1' -and $_.PortNumber -eq %d } | Select-Object -First 1 }; "+
 			"if (-not $port) { "+
-			"  $port = Add-PrinterPort -Name '%s' -PrinterHostAddress '127.0.0.1' -PortNumber %d -SNMP:$false -ErrorAction SilentlyContinue; "+
-			"  if (-not $port) { $port = Get-PrinterPort | Where-Object { $_.PrinterHostAddress -eq '127.0.0.1' -and $_.PortNumber -eq %d } | Select-Object -First 1 } "+
+			"  try { Add-PrinterPort -Name '%s' -PrinterHostAddress '127.0.0.1' -PortNumber %d -ErrorAction Stop | Out-Null } catch { throw ('Add-PrinterPort: ' + $_.Exception.Message) }; "+
+			"  $port = Get-PrinterPort -Name '%s' -ErrorAction SilentlyContinue "+
 			"}; "+
 			"if (-not $port) { throw 'no se encontro el puerto TCP 127.0.0.1:9100' }; "+
 			"$p = $port.Name; "+
 			"$x=Get-Printer -Name $n -ErrorAction SilentlyContinue; "+
 			"if ($x) { if ($x.DriverName -eq $d) { Set-Printer -Name $n -PortName $p | Out-Null; exit 0 } "+
 			"else { Remove-Printer -Name $n -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 800 } }; "+
-			"Add-Printer -Name $n -DriverName $d -PortName $p",
-		nomImpresora, driver, puertoLocal9100, nomPuertoLocal, puertoLocal9100, puertoLocal9100,
+			"try { Add-Printer -Name $n -DriverName $d -PortName $p -ErrorAction Stop } catch { throw ('Add-Printer: ' + $_.Exception.Message) }",
+		nomImpresora, driver, nomPuertoLocal, puertoLocal9100, nomPuertoLocal, puertoLocal9100, nomPuertoLocal,
 	)
 	return psComando(script)
 }
@@ -233,9 +239,8 @@ func registroCrePuerto() error {
 	if err := run("add", base, "/v", "HostName", "/t", "REG_SZ", "/d", "127.0.0.1", "/f"); err != nil {
 		return err
 	}
-	if err := run("add", base, "/v", "IPAddress", "/t", "REG_SZ", "/d", "127.0.0.1", "/f"); err != nil {
-		return err
-	}
+	// IPAddress vacío: es como lo deja Windows en un puerto TCP normal.
+	_ = run("add", base, "/v", "IPAddress", "/t", "REG_SZ", "/d", "", "/f")
 	_ = run("add", base, "/v", "HWAddress", "/t", "REG_SZ", "/d", "", "/f")
 	if err := run("add", base, "/v", "PortNumber", "/t", "REG_DWORD", "/d", fmt.Sprint(puertoLocal9100), "/f"); err != nil {
 		return err
@@ -243,8 +248,13 @@ func registroCrePuerto() error {
 	if err := run("add", base, "/v", "Protocol", "/t", "REG_DWORD", "/d", "1", "/f"); err != nil {
 		return err
 	}
-	_ = run("add", base, "/v", "SNMP Community Name", "/t", "REG_SZ", "/d", "", "/f")
+	// Version=2 y SNMP Index/PortMonMibPortIndex: sin esto el spooler no
+	// enumera el puerto y Add-Printer no lo encuentra.
+	_ = run("add", base, "/v", "Version", "/t", "REG_DWORD", "/d", "2", "/f")
+	_ = run("add", base, "/v", "SNMP Community", "/t", "REG_SZ", "/d", "", "/f")
 	_ = run("add", base, "/v", "SNMP Enabled", "/t", "REG_DWORD", "/d", "0", "/f")
+	_ = run("add", base, "/v", "SNMP Index", "/t", "REG_DWORD", "/d", "0", "/f")
+	_ = run("add", base, "/v", "PortMonMibPortIndex", "/t", "REG_DWORD", "/d", "0", "/f")
 	_ = run("add", base, "/v", "Queue", "/t", "REG_SZ", "/d", "", "/f")
 	// reiniciar cola para que tome el puerto
 	stop := exec.Command("cmd.exe", "/c", "net stop spooler & net start spooler")
@@ -255,12 +265,14 @@ func registroCrePuerto() error {
 	return nil
 }
 
-// rundllCreImpresora: ultimo recurso en Windows muy viejo usando printui.
+// rundllCreImpresora: ultimo recurso usando printui con el INF real del driver.
 func rundllCreImpresora(driver string) error {
-	inf := filepath.Join(os.Getenv("windir"), "inf", "ntprint.inf")
 	script := fmt.Sprintf(
-		`$p = Start-Process -FilePath 'rundll32.exe' -ArgumentList 'printui.dll,PrintUIEntry /if /b "%s" /f "%s" /r "%s" /m "%s" /z' -Verb RunAs -Wait -PassThru; exit $p.ExitCode`,
-		nomImpresora, inf, nomPuertoLocal, driver,
+		`$d='%s'; $inf=(Get-PrinterDriver -Name $d -ErrorAction SilentlyContinue).InfPath; `+
+			`if (-not $inf) { throw 'no encontre el INF del driver' }; `+
+			`$args='printui.dll,PrintUIEntry /if /b "%s" /f "'+$inf+'" /r "%s" /m "'+$d+'"'; `+
+			`$p = Start-Process -FilePath 'rundll32.exe' -ArgumentList $args -Verb RunAs -Wait -PassThru; exit $p.ExitCode`,
+		driver, nomImpresora, nomPuertoLocal,
 	)
 	cmd := exec.Command("powershell.exe", "-NoProfile", "-Command", script)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
